@@ -1,0 +1,95 @@
+##Practical Machine Learning Course Project
+Rachel Horwitz
+7/3/16
+
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+
+The training data come from:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data come from:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
+
+##Purpose
+The goal of this project is to use the "classe" variable to predict how the users did the exercise. 
+
+##Reading in the data
+```{r}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(knitr)
+
+urlTrain <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+urlTest <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+training <- read.csv(url(urlTrain), na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv(url(urlTest), na.strings=c("NA","#DIV/0!",""))
+```
+
+##Cleaning the data
+There are 159 variables that can be used to predict "classe" which has five levels. Next, I determine whether I can reduce the number of variables going into the model.  Looking at the data, there are a lot of missing values, so I remove variables with all missing values, the first seven variables on the file that are not related to classe , and variables with near zero variance.
+
+```{r}
+all_na <- sapply(names(testing),function(x) all(is.na(testing[,x])==TRUE))
+keep <- names(all_na)[all_na==FALSE]
+keep <- keep[-(1:7)]
+keep <- keep[1:length(keep)-1]
+keep <- c(keep,"classe")
+training_final <- training[,keep]
+```
+
+The data are now clean and the training and testing datasets have 146 variables to use to predict classe.
+
+We next take the training dataset and break it into testing and training datasets. We also check the new training and testing datasets to make sure they split correctly.  And we check the "classe" variable since that is our outcome.
+```{r}
+set.seed(432)
+sample <- createDataPartition(training_final$classe,p=0.6,list=FALSE)
+RTraining <- training_final[sample,]
+RTesting <- training_final[-sample,]
+dim(RTraining); dim(RTesting)
+summary(RTraining$classe)
+```
+
+##Model Building
+I will compare two prediction models to determine which is the best at predicting classe. First, I will define the cross validation criteria.  I will use k-fold cross validation with k=3.
+```{r}
+crossval <- trainControl(method='cv',number=3)
+```
+
+First I will use a classification tree to predice classe.  I will build the model on the training dataset and then test the accuracy of the predictions on the test dataset. I'll test the accuracy of the predictions using a confusion matrix.
+```{r}
+set.seed(52)
+treemodel <- train(classe ~ ., data=RTraining,method="rpart",trControl=crossval)
+predTree <- predict(treemodel,newdata=RTesting)
+cmTree <- confusionMatrix(predTree, RTesting$classe)
+cmTree
+```
+
+The accuracy for the tree is quite low, so I will try a random forest as an alternative model.  Again, I build the model on the training dataset and then test it on the test dataset.  I'll use a confusing matrix to test the accuracy of the predictions.
+```{r cache=TRUE}
+set.seed(11)
+modelRF <- train(classe ~ ., data=RTraining, method="rf", trControl=crossval)
+
+predRF <- predict(modelRF,newdata=RTesting)
+cmRF <- confusionMatrix(predRF,RTesting$classe)
+cmRF
+```
+
+It is clear that the random forest performs better than the tree so I will use this model in my final prediction. The accuracy rate is 99.02% with an error rate of only .98%. 
+
+##Prediction
+The final step is to use the random forest model to predict the classe variable for each obseration in the validation data set.
+```{r}
+predtest <- predict(modelRF,newdata=testing)
+predtest
+```
